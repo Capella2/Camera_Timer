@@ -8,7 +8,6 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.captstoyev.cameratimer.MainActivity
-import com.captstoyev.cameratimer.R
 import com.captstoyev.cameratimer.camera.CameraManager
 import com.captstoyev.cameratimer.data.SettingsRepository
 import com.captstoyev.cameratimer.data.UserSettings

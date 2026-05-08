@@ -85,7 +85,7 @@ fun SettingsScreen(
                 Switch(checked = settings.isBackgroundEnabled, onCheckedChange = onBackgroundToggle)
             }
 
-            Divider()
+            HorizontalDivider()
 
             // About Section
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
