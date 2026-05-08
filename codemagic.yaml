@@ -23,9 +23,9 @@ workflows:
       - name: Ensure Gradle Wrapper
         script: |
           mkdir -p gradle/wrapper
-          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            curl -L https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
-          fi
+          # Using a direct link to a known working wrapper JAR
+          curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.2.0/gradle/wrapper/gradle-wrapper.jar
+          ls -l gradle/wrapper/gradle-wrapper.jar
       - name: Build Android debug APK
         script: |
           chmod +x gradlew
