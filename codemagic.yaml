@@ -20,16 +20,9 @@ workflows:
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-      - name: Ensure Gradle Wrapper
-        script: |
-          mkdir -p gradle/wrapper
-          # Using a direct link to a known working wrapper JAR
-          curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.2.0/gradle/wrapper/gradle-wrapper.jar
-          ls -l gradle/wrapper/gradle-wrapper.jar
       - name: Build Android debug APK
         script: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
     publishing:
