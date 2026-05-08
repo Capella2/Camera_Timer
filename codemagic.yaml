@@ -22,8 +22,9 @@ workflows:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
       - name: Ensure Gradle Wrapper
         script: |
+          mkdir -p gradle/wrapper
           if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            gradle wrapper --gradle-version 8.2
+            curl -L https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
           fi
       - name: Build Android debug APK
         script: |
