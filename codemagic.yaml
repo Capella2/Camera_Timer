@@ -22,7 +22,7 @@ workflows:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
       - name: Build Android debug APK
         script: |
-          gradle assembleDebug
+          gradle assembleDebug --stacktrace --info
     artifacts:
       - app/build/outputs/apk/**/*.apk
     publishing:
