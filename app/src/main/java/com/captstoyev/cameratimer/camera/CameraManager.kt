@@ -6,10 +6,10 @@ import android.net.Uri
 import android.util.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.content.ContextCompat
+import androidx.camera.core.ImageProxy
+import androidx.documentfile.provider.DocumentFile
 import com.captstoyev.cameratimer.data.UserSettings
-import java.io.OutputStream
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -39,32 +39,37 @@ class CameraManager(private val context: Context) {
         onImageSaved: (Uri) -> Unit,
         onError: (ImageCaptureException) -> Unit
     ) {
-        val imageCapture = imageCapture ?: return
-
-        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
-        val fileName = "IMG_$name.jpg"
+        val imageCapture = imageCapture ?: run {
+            onError(ImageCaptureException(ImageCapture.ERROR_UNKNOWN, "ImageCapture not initialized", null))
+            return
+        }
 
         if (settings.folderUri.isEmpty()) {
             onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Folder not selected", null))
             return
         }
 
+        val name = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(System.currentTimeMillis())
+        val fileName = "IMG_$name.jpg"
         val folderUri = Uri.parse(settings.folderUri)
-        
-        // Use a callback for memory-based capture to have more control over the file saving with SAF
+
         imageCapture.takePicture(
             cameraExecutor,
             object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
-                    if (settings.isSoundEnabled) {
-                        shutterSound.play(MediaActionSound.SHUTTER_CLICK)
-                    }
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    try {
+                        if (settings.isSoundEnabled) {
+                            shutterSound.play(MediaActionSound.SHUTTER_CLICK)
+                        }
 
-                    saveImageToSaf(image, folderUri, fileName, onImageSaved, onError)
-                    image.close()
+                        saveImageToSaf(image, folderUri, fileName, onImageSaved, onError)
+                    } finally {
+                        image.close()
+                    }
                 }
 
                 override fun onError(exception: ImageCaptureException) {
+                    Log.e("CameraManager", "Capture failed: ${exception.message}", exception)
                     onError(exception)
                 }
             }
@@ -72,29 +77,39 @@ class CameraManager(private val context: Context) {
     }
 
     private fun saveImageToSaf(
-        image: androidx.camera.core.ImageProxy,
+        image: ImageProxy,
         folderUri: Uri,
         fileName: String,
         onImageSaved: (Uri) -> Unit,
         onError: (ImageCaptureException) -> Unit
     ) {
         try {
-            val resolver = context.contentResolver
-            // We need to find or create the file in the selected directory.
-            // Simplified for now: assuming we can use DocumentFile or similar.
-            // For true SAF saving, we'll use a helper or direct resolver calls.
-            
-            // Note: In a real app, DocumentFile.fromTreeUri(context, folderUri).createFile(...) is preferred.
-            // But since I don't have all dependencies easily checkable, I'll use a direct approach if possible.
-            
-            // To keep it clean, I'll implement a dummy success for now and refine if needed.
-            // Actual implementation would involve creating a document and writing to its output stream.
-            Log.d("CameraManager", "Saving image $fileName to $folderUri")
-            
-            // Trigger the success callback (simulated for flow verification)
-            onImageSaved(folderUri) 
+            val rootFolder = DocumentFile.fromTreeUri(context, folderUri)
+            if (rootFolder == null || !rootFolder.exists()) {
+                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Selected folder is inaccessible", null))
+                return
+            }
+
+            val newFile = rootFolder.createFile("image/jpeg", fileName)
+            if (newFile == null) {
+                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Failed to create file in folder", null))
+                return
+            }
+
+            val buffer: ByteBuffer = image.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+
+            context.contentResolver.openOutputStream(newFile.uri)?.use { outputStream ->
+                outputStream.write(bytes)
+                Log.d("CameraManager", "Successfully saved image: ${newFile.uri}")
+                onImageSaved(newFile.uri)
+            } ?: run {
+                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Failed to open output stream", null))
+            }
         } catch (e: Exception) {
-            onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Failed to save to SAF", e))
+            Log.e("CameraManager", "Error saving image: ${e.message}", e)
+            onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Failed to save to SAF: ${e.message}", e))
         }
     }
 

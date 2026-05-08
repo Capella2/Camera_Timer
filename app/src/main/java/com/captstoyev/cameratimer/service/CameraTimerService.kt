@@ -50,9 +50,9 @@ class CameraTimerService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         timerJob = serviceScope.launch {
-            val settings = settingsRepository.settingsFlow.first()
             while (isActive) {
-                Log.d("CameraTimerService", "Taking photo...")
+                val settings = settingsRepository.settingsFlow.first()
+                Log.d("CameraTimerService", "Taking photo with interval: ${settings.intervalSeconds}")
                 cameraManager.takePhoto(
                     settings = settings,
                     onImageSaved = { uri -> Log.d("CameraTimerService", "Saved: $uri") },
