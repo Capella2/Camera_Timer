@@ -31,7 +31,7 @@ class CameraTimerService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsRepository = SettingsRepository(applicationContext)
-        cameraManager = CameraManager(applicationContext)
+        cameraManager = CameraManager.getInstance(applicationContext)
         createNotificationChannel()
     }
 

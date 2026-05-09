@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settingsRepository = SettingsRepository(applicationContext)
-        cameraManager = CameraManager(applicationContext)
+        cameraManager = CameraManager.getInstance(applicationContext)
 
         setContent {
             MaterialTheme {
