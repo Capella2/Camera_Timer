@@ -4,11 +4,13 @@ import android.content.Context
 import android.media.MediaActionSound
 import android.net.Uri
 import android.util.Log
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.LifecycleOwner
 import com.captstoyev.cameratimer.data.UserSettings
+import com.google.common.util.concurrent.ListenableFuture
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
@@ -23,6 +25,7 @@ class CameraManager private constructor(private val context: Context) {
         
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val shutterSound = MediaActionSound()
+    private var camera: Camera? = null
 
     companion object {
         @Volatile
@@ -40,6 +43,44 @@ class CameraManager private constructor(private val context: Context) {
     }
 
     fun getImageCapture(): ImageCapture = imageCapture
+
+    fun bindCamera(
+        lifecycleOwner: LifecycleOwner,
+        isFrontCamera: Boolean,
+        preview: Preview? = null
+    ): ListenableFuture<ProcessCameraProvider> {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val cameraSelector = if (isFrontCamera) {
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            } else {
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
+
+            try {
+                cameraProvider.unbindAll()
+                val useCases = mutableListOf<UseCase>(imageCapture)
+                preview?.let { useCases.add(it) }
+                
+                camera = cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    cameraSelector,
+                    *useCases.toTypedArray()
+                )
+                Log.d("CameraManager", "Camera bound successfully. Front: $isFrontCamera")
+            } catch (e: Exception) {
+                Log.e("CameraManager", "Use case binding failed", e)
+            }
+        }, ContextCompat.getMainExecutor(context))
+        return cameraProviderFuture
+    }
+
+    fun setZoom(ratio: Float) {
+        camera?.cameraControl?.setZoomRatio(ratio)
+    }
+
+    fun getZoomState() = camera?.cameraInfo?.zoomState
 
     fun takePhoto(
         settings: UserSettings,
@@ -63,7 +104,7 @@ class CameraManager private constructor(private val context: Context) {
             cameraExecutor,
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
-                    Log.d("CameraManager", "onCaptureSuccess: Image captured, processing...")
+                    Log.d("CameraManager", "onCaptureSuccess: Image captured")
                     try {
                         if (settings.isSoundEnabled) {
                             shutterSound.play(MediaActionSound.SHUTTER_CLICK)
@@ -95,7 +136,7 @@ class CameraManager private constructor(private val context: Context) {
         try {
             val rootFolder = DocumentFile.fromTreeUri(context, folderUri)
             if (rootFolder == null || !rootFolder.exists()) {
-                val err = "Selected folder is inaccessible or doesn't exist"
+                val err = "Selected folder is inaccessible"
                 Log.e("CameraManager", err)
                 onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, err, null))
                 return
@@ -103,7 +144,7 @@ class CameraManager private constructor(private val context: Context) {
 
             val newFile = rootFolder.createFile("image/jpeg", fileName)
             if (newFile == null) {
-                val err = "Could not create file '$fileName'. Check folder permissions."
+                val err = "Could not create file '$fileName'"
                 Log.e("CameraManager", err)
                 onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, err, null))
                 return
@@ -115,12 +156,10 @@ class CameraManager private constructor(private val context: Context) {
 
             context.contentResolver.openOutputStream(newFile.uri)?.use { outputStream ->
                 outputStream.write(bytes)
-                Log.d("CameraManager", "File successfully written: ${newFile.uri}")
+                Log.d("CameraManager", "File saved: ${newFile.uri}")
                 onImageSaved(newFile.uri)
             } ?: run {
-                val err = "Failed to open output stream for ${newFile.uri}"
-                Log.e("CameraManager", err)
-                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, err, null))
+                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Failed to open output stream", null))
             }
         } catch (e: Exception) {
             Log.e("CameraManager", "Critical error saving image", e)

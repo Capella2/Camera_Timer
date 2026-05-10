@@ -18,6 +18,7 @@ fun SettingsScreen(
     onFolderSelect: () -> Unit,
     onSoundToggle: (Boolean) -> Unit,
     onBackgroundToggle: (Boolean) -> Unit,
+    onCameraFacingToggle: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -85,12 +86,22 @@ fun SettingsScreen(
                 Switch(checked = settings.isBackgroundEnabled, onCheckedChange = onBackgroundToggle)
             }
 
+            // Camera Facing Toggle
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Front Camera")
+                Switch(checked = settings.isFrontCamera, onCheckedChange = onCameraFacingToggle)
+            }
+
             HorizontalDivider()
 
             // About Section
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("Camera Timer App", style = MaterialTheme.typography.headlineSmall)
-                Text("Version 1.0", style = MaterialTheme.typography.bodyMedium)
+                Text("Version 1.2", style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Author: Capt. Stoyev Igor", style = MaterialTheme.typography.titleMedium)
             }

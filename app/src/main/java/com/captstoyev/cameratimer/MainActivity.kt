@@ -3,6 +3,7 @@ package com.captstoyev.cameratimer
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -53,7 +55,7 @@ fun MainApp(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by settingsRepository.settingsFlow.collectAsState(
-        initial = UserSettings(10L, "", false, false)
+        initial = UserSettings(10L, "", false, false, false)
     )
     
     var showSettings by remember { mutableStateOf(false) }
@@ -67,7 +69,6 @@ fun MainApp(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri?.let {
-            // Persist permission for the selected folder
             context.contentResolver.takePersistableUriPermission(
                 it, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
@@ -77,6 +78,9 @@ fun MainApp(
 
     LaunchedEffect(Unit) {
         permissionLauncher.launch(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     if (showSettings) {
@@ -86,11 +90,15 @@ fun MainApp(
             onFolderSelect = { folderLauncher.launch(null) },
             onSoundToggle = { scope.launch { settingsRepository.updateSoundEnabled(it) } },
             onBackgroundToggle = { scope.launch { settingsRepository.updateBackgroundEnabled(it) } },
+            onCameraFacingToggle = { scope.launch { settingsRepository.updateFrontCamera(it) } },
             onBack = { showSettings = false }
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
-            CameraPreview(cameraManager = cameraManager)
+            CameraPreview(
+                cameraManager = cameraManager,
+                isFrontCamera = settings.isFrontCamera
+            )
 
             // Controls Overlay
             Column(
@@ -117,12 +125,26 @@ fun MainApp(
                             val intent = Intent(context, CameraTimerService::class.java).apply {
                                 this.action = action
                             }
-                            context.startService(intent)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
                             isRunning = !isRunning
                         },
                         enabled = settings.folderUri.isNotEmpty()
                     ) {
                         Text(if (isRunning) "Stop Timer" else "Start Timer")
+                    }
+
+                    // Quick Switch Camera Button
+                    IconButton(
+                        onClick = { scope.launch { settingsRepository.updateFrontCamera(!settings.isFrontCamera) } },
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Switch Camera")
                     }
 
                     IconButton(

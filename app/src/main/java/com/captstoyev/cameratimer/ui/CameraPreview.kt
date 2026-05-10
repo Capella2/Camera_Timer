@@ -1,73 +1,58 @@
 package com.captstoyev.cameratimer.ui
 
 import android.view.ScaleGestureDetector
-import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import com.captstoyev.cameratimer.camera.CameraManager
 
 @Composable
 fun CameraPreview(
     cameraManager: CameraManager,
+    isFrontCamera: Boolean,
     modifier: Modifier = Modifier
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
-    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    val preview = remember { Preview.Builder().build() }
 
     AndroidView(
         factory = { ctx ->
-            val previewView = PreviewView(ctx)
-            val executor = ContextCompat.getMainExecutor(ctx)
-            
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-
-                val imageCapture = cameraManager.getImageCapture()
-
-                try {
-                    cameraProvider.unbindAll()
-                    val camera = cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        imageCapture
-                    )
-
-                    // Pinch-to-zoom logic
-                    val listener = object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                        override fun onScale(detector: ScaleGestureDetector): Boolean {
-                            val currentZoomRatio = camera.cameraInfo.zoomState.value?.zoomRatio ?: 1f
-                            val delta = detector.scaleFactor
-                            camera.cameraControl.setZoomRatio(currentZoomRatio * delta)
-                            return true
-                        }
+            PreviewView(ctx).also { previewView ->
+                preview.setSurfaceProvider(previewView.surfaceProvider)
+                
+                val listener = object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScale(detector: ScaleGestureDetector): Boolean {
+                        val zoomState = cameraManager.getZoomState()?.value ?: return false
+                        val currentZoomRatio = zoomState.zoomRatio
+                        val delta = detector.scaleFactor
+                        cameraManager.setZoom(currentZoomRatio * delta)
+                        return true
                     }
-                    val scaleGestureDetector = ScaleGestureDetector(ctx, listener)
-
-                    previewView.setOnTouchListener { _, event ->
-                        scaleGestureDetector.onTouchEvent(event)
-                        return@setOnTouchListener true
-                    }
-
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
-            }, executor)
-            previewView
+                val scaleGestureDetector = ScaleGestureDetector(ctx, listener)
+                previewView.setOnTouchListener { _, event ->
+                    scaleGestureDetector.onTouchEvent(event)
+                    true
+                }
+            }
         },
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize(),
+        update = {
+            // Re-bind when camera facing changes
+            cameraManager.bindCamera(lifecycleOwner, isFrontCamera, preview)
+        }
     )
+
+    // Initial binding
+    LaunchedEffect(isFrontCamera) {
+        cameraManager.bindCamera(lifecycleOwner, isFrontCamera, preview)
+    }
 }
