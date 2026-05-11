@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
@@ -15,7 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import com.captstoyev.cameratimer.MainActivity
 import com.captstoyev.cameratimer.camera.CameraManager
 import com.captstoyev.cameratimer.data.SettingsRepository
-import com.captstoyev.cameratimer.data.UserSettings
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 
@@ -55,22 +53,29 @@ class CameraTimerService : LifecycleService() {
         startForeground(NOTIFICATION_ID, notification)
 
         timerJob = lifecycleScope.launch {
-            // First bind, ensure camera is ready for background
-            val initialSettings = settingsRepository.settingsFlow.first()
-            if (initialSettings.isBackgroundEnabled) {
-                cameraManager.bindCamera(this@CameraTimerService, initialSettings.isFrontCamera)
-            }
-
-            while (isActive) {
-                val settings = settingsRepository.settingsFlow.first()
-                Log.d("CameraTimerService", "Interval trigger. Background mode: ${settings.isBackgroundEnabled}")
+            try {
+                // Wait for initial settings
+                val initialSettings = settingsRepository.settingsFlow.first()
                 
-                cameraManager.takePhoto(
-                    settings = settings,
-                    onImageSaved = { uri -> Log.d("CameraTimerService", "Saved: $uri") },
-                    onError = { e -> Log.e("CameraTimerService", "Capture Error: ${e.message}") }
-                )
-                delay(settings.intervalSeconds * 1000)
+                // If background mode enabled, service takes ownership of camera
+                if (initialSettings.isBackgroundEnabled) {
+                    cameraManager.bindCamera(this@CameraTimerService, initialSettings.isFrontCamera)
+                }
+
+                while (isActive) {
+                    val settings = settingsRepository.settingsFlow.first()
+                    Log.d("CameraTimerService", "Interval trigger. Target: ${settings.folderUri}")
+                    
+                    cameraManager.takePhoto(
+                        settings = settings,
+                        onImageSaved = { uri -> Log.d("CameraTimerService", "Saved: $uri") },
+                        onError = { e -> Log.e("CameraTimerService", "Capture Error: ${e.message}") }
+                    )
+                    delay(settings.intervalSeconds * 1000)
+                }
+            } catch (e: Exception) {
+                Log.e("CameraTimerService", "Timer loop crashed", e)
+                stopTimer()
             }
         }
     }
@@ -107,10 +112,5 @@ class CameraTimerService : LifecycleService() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraManager.shutdown()
     }
 }

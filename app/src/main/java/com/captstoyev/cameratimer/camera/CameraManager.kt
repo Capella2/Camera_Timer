@@ -51,16 +51,18 @@ class CameraManager private constructor(private val context: Context) {
     ): ListenableFuture<ProcessCameraProvider> {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val cameraSelector = if (isFrontCamera) {
-                CameraSelector.DEFAULT_FRONT_CAMERA
-            } else {
-                CameraSelector.DEFAULT_BACK_CAMERA
-            }
-
             try {
+                val cameraProvider = cameraProviderFuture.get()
+                val cameraSelector = if (isFrontCamera) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
                 cameraProvider.unbindAll()
-                val useCases = mutableListOf<UseCase>(imageCapture)
+                
+                val useCases = mutableListOf<UseCase>()
+                useCases.add(imageCapture)
                 preview?.let { useCases.add(it) }
                 
                 camera = cameraProvider.bindToLifecycle(
@@ -77,7 +79,13 @@ class CameraManager private constructor(private val context: Context) {
     }
 
     fun setZoom(ratio: Float) {
-        camera?.cameraControl?.setZoomRatio(ratio)
+        val currentCamera = camera ?: return
+        val zoomState = currentCamera.cameraInfo.zoomState.value ?: return
+        
+        // Clamp the ratio within supported limits
+        val clampedRatio = ratio.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+        currentCamera.cameraControl.setZoomRatio(clampedRatio)
+        Log.d("CameraManager", "Zoom set to: $clampedRatio (requested: $ratio)")
     }
 
     fun getZoomState() = camera?.cameraInfo?.zoomState
@@ -87,12 +95,8 @@ class CameraManager private constructor(private val context: Context) {
         onImageSaved: (Uri) -> Unit,
         onError: (ImageCaptureException) -> Unit
     ) {
-        Log.d("CameraManager", "takePhoto triggered. Sound: ${settings.isSoundEnabled}, Folder: ${settings.folderUri}")
-
         if (settings.folderUri.isEmpty()) {
-            val err = "Folder not selected in settings"
-            Log.e("CameraManager", err)
-            onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, err, null))
+            onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Folder not selected", null))
             return
         }
 
@@ -100,30 +104,31 @@ class CameraManager private constructor(private val context: Context) {
         val fileName = "IMG_$name.jpg"
         val folderUri = Uri.parse(settings.folderUri)
 
-        imageCapture.takePicture(
-            cameraExecutor,
-            object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    Log.d("CameraManager", "onCaptureSuccess: Image captured")
-                    try {
-                        if (settings.isSoundEnabled) {
-                            shutterSound.play(MediaActionSound.SHUTTER_CLICK)
+        try {
+            imageCapture.takePicture(
+                cameraExecutor,
+                object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(image: ImageProxy) {
+                        try {
+                            if (settings.isSoundEnabled) {
+                                shutterSound.play(MediaActionSound.SHUTTER_CLICK)
+                            }
+                            saveImageToSaf(image, folderUri, fileName, onImageSaved, onError)
+                        } finally {
+                            image.close()
                         }
-                        saveImageToSaf(image, folderUri, fileName, onImageSaved, onError)
-                    } catch (e: Exception) {
-                        Log.e("CameraManager", "Error in success callback: ${e.message}")
-                        onError(ImageCaptureException(ImageCapture.ERROR_UNKNOWN, "Processing error", e))
-                    } finally {
-                        image.close()
+                    }
+
+                    override fun onError(exception: ImageCaptureException) {
+                        Log.e("CameraManager", "Capture failed: ${exception.message}")
+                        onError(exception)
                     }
                 }
-
-                override fun onError(exception: ImageCaptureException) {
-                    Log.e("CameraManager", "Capture failed! Code: ${exception.imageCaptureError}, Message: ${exception.message}", exception)
-                    onError(exception)
-                }
-            }
-        )
+            )
+        } catch (e: Exception) {
+            Log.e("CameraManager", "takePicture call failed", e)
+            onError(ImageCaptureException(ImageCapture.ERROR_UNKNOWN, "Call failed: ${e.message}", e))
+        }
     }
 
     private fun saveImageToSaf(
@@ -136,17 +141,13 @@ class CameraManager private constructor(private val context: Context) {
         try {
             val rootFolder = DocumentFile.fromTreeUri(context, folderUri)
             if (rootFolder == null || !rootFolder.exists()) {
-                val err = "Selected folder is inaccessible"
-                Log.e("CameraManager", err)
-                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, err, null))
+                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Folder inaccessible", null))
                 return
             }
 
             val newFile = rootFolder.createFile("image/jpeg", fileName)
             if (newFile == null) {
-                val err = "Could not create file '$fileName'"
-                Log.e("CameraManager", err)
-                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, err, null))
+                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "File creation failed", null))
                 return
             }
 
@@ -156,13 +157,9 @@ class CameraManager private constructor(private val context: Context) {
 
             context.contentResolver.openOutputStream(newFile.uri)?.use { outputStream ->
                 outputStream.write(bytes)
-                Log.d("CameraManager", "File saved: ${newFile.uri}")
                 onImageSaved(newFile.uri)
-            } ?: run {
-                onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Failed to open output stream", null))
-            }
+            } ?: onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Stream open failed", null))
         } catch (e: Exception) {
-            Log.e("CameraManager", "Critical error saving image", e)
             onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "Save error: ${e.message}", e))
         }
     }

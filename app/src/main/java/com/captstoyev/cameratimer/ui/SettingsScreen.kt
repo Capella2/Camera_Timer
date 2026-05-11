@@ -27,7 +27,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text("<-") // Simplified back button
+                        Text("<-")
                     }
                 }
             )
@@ -43,15 +43,37 @@ fun SettingsScreen(
         ) {
             Text("Capture Settings", style = MaterialTheme.typography.titleMedium)
 
-            // Interval Setting
+            // Interval Setting with Buttons
             Column {
-                Text("Interval (seconds): ${settings.intervalSeconds}")
-                Slider(
-                    value = settings.intervalSeconds.toFloat(),
-                    onValueChange = { onIntervalChange(it.toLong()) },
-                    valueRange = 1f..60f,
-                    steps = 59
-                )
+                Text("Interval: ${settings.intervalSeconds} seconds")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    FilledTonalButton(
+                        onClick = { if (settings.intervalSeconds > 1) onIntervalChange(settings.intervalSeconds - 1) },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Text("-")
+                    }
+                    
+                    Slider(
+                        value = settings.intervalSeconds.toFloat(),
+                        onValueChange = { onIntervalChange(it.toLong()) },
+                        valueRange = 1f..60f,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    FilledTonalButton(
+                        onClick = { if (settings.intervalSeconds < 60) onIntervalChange(settings.intervalSeconds + 1) },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Text("+")
+                    }
+                }
             }
 
             // Folder Selection
@@ -101,7 +123,7 @@ fun SettingsScreen(
             // About Section
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("Camera Timer App", style = MaterialTheme.typography.headlineSmall)
-                Text("Version 1.2", style = MaterialTheme.typography.bodyMedium)
+                Text("Version 1.3", style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Author: Capt. Stoyev Igor", style = MaterialTheme.typography.titleMedium)
             }
